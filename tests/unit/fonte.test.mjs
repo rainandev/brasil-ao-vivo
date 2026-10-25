@@ -110,18 +110,43 @@ test("resposta antiga (cache da fonte) não sobrescreve leitura mais nova", asyn
 test("encerrado só quando todos os recortes estão finais", async () => {
   const arquivos = cenario({ st: 1000, and: "f" });
   arquivos.zz = arquivoTeste({ uf: "zz", st: 10, ts: 10, votos: [1, 2], and: "f" });
-  const f = fetchFalso((uf) => ({ corpo: arquivos[uf] }));
-  assert.equal(encerrado(await obterResultados("6257", { cfg: cfgBase, fetchImpl: f })), false); // ts=1000, st=1000 ok; eleicao difere -> erro
+  const parcial = { ...arquivos, sp: cenario({ st: 900, and: "p" }).sp };
+  const f = fetchFalso((uf) => ({ corpo: { ...parcial[uf], ele: 6258 } }));
+  assert.equal(encerrado(await obterResultados("6258", { cfg: cfgBase, fetchImpl: f })), false); // SP ainda parcial
   limparMemoria();
   const g = fetchFalso((uf) => ({ corpo: { ...arquivos[uf], ele: 6258 } }));
   assert.equal(encerrado(await obterResultados("6258", { cfg: cfgBase, fetchImpl: g })), true);
 });
 
-test("fonte simulada só é aceita fora da Vercel e com permissão explícita", () => {
-  assert.equal(lerConfig({ TSE_BASE_URL: "http://x" }).base, "https://resultados.tse.jus.br");
-  assert.equal(lerConfig({ TSE_BASE_URL: "http://x", PERMITIR_FONTE_TESTE: "1", VERCEL: "1" }).base, "https://resultados.tse.jus.br");
-  const local = lerConfig({ TSE_BASE_URL: "http://x/", PERMITIR_FONTE_TESTE: "1" });
-  assert.equal(local.base, "http://x");
-  assert.equal(local.teste, true);
+test("a fonte é sempre a divulgação oficial do TSE (não há modo simulado)", () => {
+  assert.equal(lerConfig({}).base, "https://resultados.tse.jus.br");
+  assert.equal(lerConfig({ TSE_BASE_URL: "http://x", PERMITIR_FONTE_TESTE: "1" }).base, "https://resultados.tse.jus.br");
   assert.deepEqual(lerConfig({}).eleicoes, { 1: "6257", 2: "6258" });
+});
+
+test("1º turno: sem resposta do TSE, usa o registro da totalização final (dado real)", async () => {
+  const f = fetchFalso(() => ({ status: 500 }));
+  const snap = await obterResultados("6257", { cfg: cfgBase, fetchImpl: f });
+  const br = snap.escopos.br.dados;
+  assert.equal(br.origem, "registro");
+  assert.equal(br.status, "final");
+  assert.deepEqual(br.candidatos.map((c) => [c.nome, c.votos, c.pct]), [
+    ["FLAVIO BOLSONARO", 56104503, "47,03"],
+    ["LULA", 53879538, "45,16"],
+  ]);
+  assert.equal(br.candidatos[0].foto, "/img/candidatos/flavio-bolsonaro.webp");
+  assert.equal(snap.escopos.ba.dados.candidatos[0].pct, "66,17");
+});
+
+test("1º turno: leitura ao vivo do TSE tem prioridade sobre o registro", async () => {
+  const arquivos = cenario({ ele: "6257", st: 1000, and: "f" });
+  const f = fetchFalso((uf) => (arquivos[uf] ? { corpo: arquivos[uf] } : { status: 404 }));
+  const snap = await obterResultados("6257", { cfg: cfgBase, fetchImpl: f });
+  assert.equal(snap.escopos.sp.dados.origem, "tse");
+  assert.equal(snap.escopos.zz.dados.origem, "registro"); // Exterior não veio ao vivo
+});
+
+test("2º turno nunca recebe números do registro do 1º turno", async () => {
+  const snap = await obterResultados("6258", { cfg: cfgBase, fetchImpl: fetchFalso(() => ({ status: 500 })) });
+  assert.ok(Object.values(snap.escopos).every((e) => e.dados === null));
 });

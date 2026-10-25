@@ -1,7 +1,8 @@
 import {
-  ABRANGENCIAS, FONTE_OFICIAL, NOMES, candidatosReferencia, corEstado, formatarPct, formatarVotos,
-  lerArquivo, maisNovo, mesclar, urlArquivo, urlFoto,
+  ABRANGENCIAS, FONTE_OFICIAL, NOMES, candidatosReferencia, completarComRegistro, corEstado, dadosDoRegistro,
+  fotoCandidato, formatarPct, formatarVotos, lerArquivo, maisNovo, mesclar, urlArquivo,
 } from "./core.js";
+import { REGISTRO_1T } from "../data/primeiro-turno-registro.js";
 
 const params = new URLSearchParams(location.search);
 const ambienteLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
@@ -12,6 +13,7 @@ const INTERVALO_ENCERRADO_MS = 5 * 60_000;
 const INTERVALO_MAX_ERRO_MS = 120_000;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const ELEICOES_PADRAO = { 1: "6257", 2: "6258" };
+const reduzirMovimento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,10 +26,13 @@ const estado = {
   falhas: 0,
   timer: null,
   geo: null,
+  mapa3d: null,
+  modoMapa: null,
   eleicoes: { ...ELEICOES_PADRAO },
+  ultimaConsultaOk: null,
 };
 
-// ---------- utilidades de DOM ----------
+// ---------- utilidades ----------
 function el(tag, attrs = {}, ...filhos) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -44,18 +49,55 @@ function svg(tag, attrs = {}) {
   for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
   return n;
 }
+function marcarAtualizado(node) {
+  node.classList.remove("atualizado");
+  void node.offsetWidth;
+  node.classList.add("atualizado");
+}
 function setTexto(node, texto) {
   if (node.textContent !== texto) {
     node.textContent = texto;
-    node.classList.remove("atualizado");
-    void node.offsetWidth;
-    node.classList.add("atualizado");
+    marcarAtualizado(node);
   }
 }
 const horaBrasilia = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
 });
 const iniciais = (nome) => nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("");
+const pctTexto = (n) => `${n.toFixed(2).replace(".", ",")}%`;
+const facilitar = (t) => 1 - (1 - t) ** 3;
+
+// Contador animado: interpola até o valor oficial e termina SEMPRE no texto oficial.
+function contar(node, alvo, formatar, textoFinal) {
+  const de = Number(node.dataset.valor ?? NaN);
+  node.dataset.valor = String(alvo);
+  cancelAnimationFrame(Number(node.dataset.raf || 0));
+  if (reduzirMovimento || !Number.isFinite(de) || de === alvo) { setTexto(node, textoFinal); return; }
+  const inicio = performance.now();
+  const dur = 1100;
+  const passo = (agora) => {
+    const t = Math.min(1, (agora - inicio) / dur);
+    if (t < 1) {
+      node.textContent = formatar(de + (alvo - de) * facilitar(t));
+      node.dataset.raf = String(requestAnimationFrame(passo));
+    } else {
+      node.textContent = textoFinal;
+      marcarAtualizado(node);
+    }
+  };
+  node.dataset.raf = String(requestAnimationFrame(passo));
+}
+
+function imagemCandidato(c, classe) {
+  const caixa = el("div", { class: classe, "aria-hidden": "true" });
+  const src = c.foto || fotoCandidato(c, null);
+  if (src) {
+    const img = el("img", { src, alt: "", decoding: "async", referrerpolicy: "no-referrer", width: "160", height: "160" });
+    img.addEventListener("error", () => { caixa.textContent = iniciais(c.nome); });
+    caixa.append(img);
+  } else caixa.textContent = iniciais(c.nome);
+  return caixa;
+}
 
 // ---------- busca de dados ----------
 async function buscarApi(turno) {
@@ -67,7 +109,7 @@ async function buscarApi(turno) {
 }
 
 // Plano B: se a rota do servidor falhar em produção, lê os mesmos arquivos
-// oficiais direto do TSE (que permite CORS). Nunca usado em ambiente local de teste.
+// oficiais direto do TSE (que permite CORS). Não é usado em ambiente local.
 async function buscarDireto(turno) {
   const eleicao = estado.eleicoes[turno];
   const cfg = { base: FONTE_OFICIAL, ambiente: "oficial", ciclo: "ele2026", eleicao, cargo: 1 };
@@ -77,17 +119,17 @@ async function buscarDireto(turno) {
       const r = await fetch(urlArquivo(cfg, uf), { cache: "no-cache" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const dados = lerArquivo(await r.json(), { uf, eleicao });
-      for (const c of dados.candidatos) c.foto = urlFoto(cfg, c.sq);
+      for (const c of dados.candidatos) c.foto = fotoCandidato(c, cfg);
       return [uf, { dados, erro: null }];
     } catch (e) {
       return [uf, { dados: null, erro: { codigo: "DIRETO", mensagem: String(e.message || e) } }];
     }
   }));
-  const escopos = Object.fromEntries(pares);
   const lidos = pares.filter(([, p]) => p.dados).length;
-  if (!lidos) throw new Error("fonte oficial indisponível");
-  return { turno: Number(turno), eleicao, consultadoEm, arquivosLidos: lidos, arquivosTotal: ABRANGENCIAS.length,
-    fonte: { nome: "TSE (leitura direta)", base: FONTE_OFICIAL, teste: false }, escopos };
+  const snap = completarComRegistro({ turno: Number(turno), eleicao, consultadoEm, arquivosLidos: lidos, arquivosTotal: ABRANGENCIAS.length,
+    fonte: { nome: "TSE (leitura direta)", base: FONTE_OFICIAL }, escopos: Object.fromEntries(pares) }, REGISTRO_1T);
+  if (!Object.values(snap.escopos).some((e) => e.dados)) throw new Error("fonte oficial indisponível");
+  return snap;
 }
 
 async function atualizar() {
@@ -111,8 +153,13 @@ async function atualizar() {
     estado.falhas = 0;
     estado.eleicoes[turno] = dados.eleicao;
     estado.snapshot = mesclar(estado.snapshot, dados);
+    // "Última consulta bem-sucedida" só avança quando algum arquivo oficial foi lido de fato.
+    if (dados.arquivosLidos > 0) estado.ultimaConsultaOk = dados.consultadoEm;
     render();
-    setVivo("ok", dados.arquivosLidos ? "Ao vivo" : "Conectado · aguardando TSE");
+    const semResposta = dados.arquivosLidos === 0 && Object.values(dados.escopos).some((e) => e.erro && e.erro.codigo !== "NAO_PUBLICADO");
+    if (snapshotEncerrado()) setVivo("final", "Resultado final");
+    else if (semResposta) setVivo("erro", "Fonte oficial sem resposta");
+    else setVivo("ok", Object.values(estado.snapshot.escopos).some((e) => e.dados?.status === "parcial") ? "Ao vivo" : "Conectado · aguardando TSE");
     $("mensagem").textContent = mensagemFalhasParciais(estado.snapshot);
   } else {
     estado.falhas += 1;
@@ -142,8 +189,13 @@ function snapshotEncerrado() {
 function mensagemFalhasParciais(snap) {
   const falhos = Object.entries(snap.escopos).filter(([, i]) => i.erro && i.erro.codigo !== "NAO_PUBLICADO");
   if (!falhos.length) return "";
-  const nomes = falhos.slice(0, 4).map(([uf]) => NOMES[uf]).join(", ");
-  return `Falha ao atualizar ${falhos.length} arquivo(s) oficial(is) (${nomes}${falhos.length > 4 ? "…" : ""}). Exibindo a última leitura válida desses recortes.`;
+  const lista = (itens) => `${itens.slice(0, 4).map(([uf]) => NOMES[uf]).join(", ")}${itens.length > 4 ? "…" : ""}`;
+  const comLeitura = falhos.filter(([, i]) => i.dados);
+  const semLeitura = falhos.filter(([, i]) => !i.dados);
+  const partes = [];
+  if (comLeitura.length) partes.push(`Falha ao atualizar ${comLeitura.length} recorte(s) (${lista(comLeitura)}); exibindo a última leitura válida.`);
+  if (semLeitura.length) partes.push(`A fonte oficial não respondeu para ${semLeitura.length} recorte(s) (${lista(semLeitura)}); nova tentativa automática em breve.`);
+  return partes.join(" ");
 }
 
 function setVivo(est, texto) {
@@ -152,14 +204,9 @@ function setVivo(est, texto) {
 }
 
 // ---------- renderização ----------
-function escopoAtual() {
-  return estado.snapshot?.escopos?.[estado.uf] || null;
-}
-
 function render() {
   const snap = estado.snapshot;
-  $("aviso-teste").hidden = !snap?.fonte?.teste;
-  const item = escopoAtual();
+  const item = snap?.escopos?.[estado.uf] || null;
   const dados = item?.dados || null;
   const referencia = candidatosReferencia(snap?.escopos?.br?.dados);
   renderStatus(item, snap);
@@ -180,14 +227,16 @@ function renderStatus(item, snap) {
   if (!dados) {
     setTexto($("status-secoes"), `${nome}: aguardando divulgação dos resultados oficiais`);
   } else if (status === "aguardando") {
-    setTexto($("status-secoes"), `${nome}: arquivo oficial publicado, apuração ainda não iniciada (0 seções totalizadas)`);
+    setTexto($("status-secoes"), `${nome}: arquivo oficial publicado, apuração ainda não iniciada`);
+  } else if (dados.secoes.totalizadas == null) {
+    setTexto($("status-secoes"), `${nome}: ${formatarPct(dados.secoes.pct)} das seções totalizadas`);
   } else {
     setTexto($("status-secoes"), `${nome}: ${formatarPct(dados.secoes.pct)} das seções totalizadas (${formatarVotos(dados.secoes.totalizadas)} de ${formatarVotos(dados.secoes.total)})`);
   }
   const br = snap?.escopos?.br?.dados;
-  $("barra-progresso").style.width = br?.secoes?.pctNum != null ? `${br.secoes.pctNum}%` : "0";
+  $("barra-progresso").style.width = br?.secoes?.pctNum != null && br.status !== "aguardando" ? `${br.secoes.pctNum}%` : "0";
   $("hora-referencia").textContent = dados?.dg ? `${dados.dg} ${dados.hg} (Brasília)` : "—";
-  $("hora-consulta").textContent = snap?.consultadoEm ? horaBrasilia.format(new Date(snap.consultadoEm)) : "—";
+  $("hora-consulta").textContent = estado.ultimaConsultaOk ? horaBrasilia.format(new Date(estado.ultimaConsultaOk)) : "—";
 }
 
 function slotDe(numero, referencia) {
@@ -201,9 +250,10 @@ function renderCandidatos(dados, referencia, item) {
   $("voltar-brasil").hidden = estado.uf === "br";
   const avisos = $("avisos-dados");
   const msgs = [...(dados?.avisos || [])];
-  if (item?.desatualizado) msgs.unshift("Este recorte não pôde ser atualizado na última consulta; exibindo a última leitura válida.");
+  if (item?.desatualizado) msgs.unshift("Este recorte não pôde ser atualizado na última consulta; exibindo a última leitura válida");
+  if (dados?.origem === "registro") msgs.push("Exibindo os dois candidatos que foram ao 2º turno, conforme a totalização final do TSE. A lista completa aparece quando a leitura direta do arquivo do 1º turno responder");
   avisos.hidden = !msgs.length;
-  avisos.textContent = msgs.length ? `Conferência dos dados: ${msgs.join("; ")}.` : "";
+  avisos.textContent = msgs.length ? `${msgs.join(". ")}.` : "";
 
   if (!dados) {
     lista.replaceChildren(el("li", { class: "vazio" },
@@ -213,43 +263,44 @@ function renderCandidatos(dados, referencia, item) {
   }
   const iniciada = dados.status !== "aguardando";
   const existentes = new Map([...lista.querySelectorAll(".candidato")].map((n) => [n.dataset.numero, n]));
-  const nos = dados.candidatos.map((c) => {
-    const no = existentes.get(c.numero) || criarCandidato(c);
+  const nos = dados.candidatos.map((c, i) => {
+    const no = existentes.get(c.numero) || criarCandidato(c, i);
     no.dataset.slot = slotDe(c.numero, referencia);
+    no.classList.toggle("lider", iniciada && i === 0 && c.votos > (dados.candidatos[1]?.votos ?? -1));
     const nums = no.querySelector(".cand-numeros");
     if (iniciada) {
       if (!nums.querySelector(".cand-pct")) nums.replaceChildren(el("span", { class: "cand-pct" }), el("span", { class: "cand-votos" }));
-      setTexto(nums.querySelector(".cand-pct"), formatarPct(c.pct));
-      setTexto(nums.querySelector(".cand-votos"), `${formatarVotos(c.votos)} votos`);
+      contar(nums.querySelector(".cand-pct"), c.pctNum ?? 0, pctTexto, formatarPct(c.pct));
+      contar(nums.querySelector(".cand-votos"), c.votos, (v) => `${formatarVotos(Math.round(v))} votos`, `${formatarVotos(c.votos)} votos`);
       no.querySelector(".cand-trilho span").style.width = `${c.pctNum ?? 0}%`;
+      no.querySelector(".foto").style.setProperty("--p", String(c.pctNum ?? 0));
     } else {
       nums.replaceChildren(el("span", { class: "cand-aguardando", text: "Aguardando divulgação dos resultados oficiais" }));
       no.querySelector(".cand-trilho span").style.width = "0";
+      no.querySelector(".foto").style.setProperty("--p", "0");
     }
-    const sit = no.querySelector(".cand-situacao");
-    const mostrarSit = iniciada && /eleit|turno/i.test(c.situacao) && !/n[aã]o eleit/i.test(c.situacao);
-    sit.hidden = !mostrarSit;
-    sit.textContent = mostrarSit ? c.situacao : "";
+    const etiquetas = no.querySelector(".etiquetas");
+    etiquetas.replaceChildren();
+    if (no.classList.contains("lider") && dados.status === "parcial") etiquetas.append(el("span", { class: "etiqueta lidera", text: "Lidera" }));
+    if (iniciada && /eleit|turno/i.test(c.situacao) && !/n[aã]o eleit/i.test(c.situacao)) etiquetas.append(el("span", { class: "etiqueta", text: c.situacao }));
     no.setAttribute("aria-label", iniciada
       ? `${c.nome}, ${c.partido}: ${formatarPct(c.pct)} dos votos válidos, ${formatarVotos(c.votos)} votos`
       : `${c.nome}, ${c.partido}: aguardando resultados`);
     return no;
   });
-  lista.replaceChildren(...nos);
+  // Reordena só se a posição mudou (evita reiniciar as animações a cada consulta).
+  const atual = [...lista.children];
+  if (nos.length !== atual.length || nos.some((n, i) => n !== atual[i])) lista.replaceChildren(...nos);
 }
 
-function criarCandidato(c) {
-  const foto = el("div", { class: "foto", "aria-hidden": "true" });
-  if (c.foto) {
-    const img = el("img", { src: c.foto, alt: "", loading: "lazy", referrerpolicy: "no-referrer" });
-    img.addEventListener("error", () => { foto.textContent = iniciais(c.nome); });
-    foto.append(img);
-  } else foto.textContent = iniciais(c.nome);
-  return el("li", { class: "candidato", "data-numero": c.numero },
+function criarCandidato(c, ordem) {
+  const foto = el("div", { class: "foto" }, imagemCandidato(c, "foto-interna"));
+  return el("li", { class: "candidato", "data-numero": c.numero, style: `--ordem:${ordem}` },
     foto,
-    el("div", {},
-      el("p", { class: "cand-nome" }, document.createTextNode(c.nome), el("span", { class: "cand-situacao", hidden: true })),
-      el("div", { class: "cand-partido", text: `${c.partido} · ${c.numero}` })),
+    el("div", { class: "cand-topo" },
+      el("p", { class: "cand-nome", text: c.nome }),
+      el("div", { class: "cand-partido", text: [c.partido, c.numero].filter(Boolean).join(" · ") }),
+      el("div", { class: "etiquetas" })),
     el("div", { class: "cand-numeros" }),
     el("div", { class: "cand-trilho" }, el("span")));
 }
@@ -257,12 +308,14 @@ function criarCandidato(c) {
 function renderIndicadores(dados) {
   $("indicadores-escopo").textContent = `— ${NOMES[estado.uf]}`;
   const ok = dados && dados.status !== "aguardando";
+  const num = (t) => (t == null ? null : Number(String(t).replace(",", ".")));
+  const v = dados?.votos || {};
   const linhas = [
-    ["Seções totalizadas", ok ? formatarPct(dados.secoes.pct) : "—", ok ? `${formatarVotos(dados.secoes.totalizadas)} de ${formatarVotos(dados.secoes.total)}` : "aguardando", ok ? dados.secoes.pctNum : 0],
-    ["Votos válidos", ok ? formatarVotos(dados.votos.validos) : "—", "", null],
-    ["Brancos", ok ? formatarPct(dados.votos.pctBrancos) : "—", ok ? `${formatarVotos(dados.votos.brancos)} votos` : "", ok ? Number(String(dados.votos.pctBrancos).replace(",", ".")) : 0],
-    ["Nulos", ok ? formatarPct(dados.votos.pctNulos) : "—", ok ? `${formatarVotos(dados.votos.nulos)} votos` : "", ok ? Number(String(dados.votos.pctNulos).replace(",", ".")) : 0],
-    ["Abstenção", ok ? formatarPct(dados.votos.pctAbstencao) : "—", ok ? `${formatarVotos(dados.votos.abstencao)} eleitores` : "", ok ? Number(String(dados.votos.pctAbstencao).replace(",", ".")) : 0],
+    ["Seções totalizadas", ok ? formatarPct(dados.secoes.pct) : "—", ok && dados.secoes.totalizadas != null ? `${formatarVotos(dados.secoes.totalizadas)} de ${formatarVotos(dados.secoes.total)}` : ok ? "" : "aguardando", ok ? dados.secoes.pctNum : 0],
+    ["Votos válidos", ok ? formatarVotos(v.validos) : "—", "", null],
+    ["Brancos", ok ? formatarPct(v.pctBrancos) : "—", ok && v.brancos != null ? `${formatarVotos(v.brancos)} votos` : "", ok ? num(v.pctBrancos) : 0],
+    ["Nulos", ok ? formatarPct(v.pctNulos) : "—", ok && v.nulos != null ? `${formatarVotos(v.nulos)} votos` : "", ok ? num(v.pctNulos) : 0],
+    ["Abstenção", ok ? formatarPct(v.pctAbstencao) : "—", ok && v.abstencao != null ? `${formatarVotos(v.abstencao)} eleitores` : "", ok ? num(v.pctAbstencao) : 0],
   ];
   const dl = $("indicadores");
   if (dl.children.length !== linhas.length) {
@@ -278,23 +331,103 @@ function renderIndicadores(dados) {
     trilho.hidden = largura == null;
     trilho.firstChild.style.width = `${Number.isFinite(largura) ? largura : 0}%`;
   });
+  $("nota-indicadores").textContent = dados?.origem === "registro"
+    ? "Brancos, nulos e abstenção aparecem quando a leitura direta do arquivo oficial do TSE responder."
+    : "Percentuais de brancos, nulos e abstenção conforme publicados pelo TSE.";
+}
+
+// ---------- resumo do 1º turno (dado final, oficial) ----------
+function renderResumo1T() {
+  const secao = $("resumo-1t");
+  secao.hidden = estado.turno !== "2";
+  if (secao.hidden || secao.dataset.pronto) return;
+  const br = dadosDoRegistro(REGISTRO_1T, "br");
+  if (!br) { secao.hidden = true; return; }
+  const [esq, dir] = br.candidatos; // ordenados por votos
+  const ref = candidatosReferencia(br);
+  const cor = (c) => `var(--${slotDe(c.numero, ref)}-3)`;
+  const foto = (c) => {
+    const img = el("img", { src: c.foto, alt: "", width: "112", height: "112", decoding: "async" });
+    img.addEventListener("error", () => img.replaceWith(el("span", { class: "duelo-sem-foto", text: iniciais(c.nome) })));
+    return img;
+  };
+  const lado = (c) => el("div", { class: "duelo-lado", style: `--cor-lado:${cor(c)}` },
+    foto(c),
+    el("div", { class: "duelo-info" },
+      el("div", { class: "duelo-nome", text: c.nome }),
+      el("div", { class: "duelo-partido", text: `${c.partido} · ${c.numero}` }),
+      el("div", { class: "duelo-pct", text: formatarPct(c.pct) }),
+      el("div", { class: "duelo-votos", text: `${formatarVotos(c.votos)} votos` })));
+  const barra = el("div", { class: "duelo-barra", style: `--cor-esq:${cor(esq)};--cor-dir:${cor(dir)}`, role: "img",
+    "aria-label": `${esq.nome} ${formatarPct(esq.pct)} contra ${dir.nome} ${formatarPct(dir.pct)} dos votos válidos` }, el("span"), el("span"));
+  $("resumo-duelo").replaceChildren(
+    el("div", { class: "duelo-lados" }, lado(esq), lado(dir)),
+    barra,
+    el("p", { class: "duelo-nota", text: "Percentual sobre votos válidos. Os dois mais votados disputam o 2º turno em 25/10/2026." }));
+  $("resumo-fonte").textContent = `TSE · ${br.dg} ${br.hg.slice(0, 5)} · ${formatarPct(br.secoes.pct)} das seções`;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const [a, b] = barra.children;
+    a.style.width = `${esq.pctNum}%`;
+    b.style.width = `${dir.pctNum}%`;
+  }));
+  secao.dataset.pronto = "1";
 }
 
 // ---------- mapa ----------
+function preferenciaModo() {
+  const q = params.get("mapa");
+  if (q === "2d" || q === "3d") return q;
+  try { const s = localStorage.getItem("bav:mapa"); if (s === "2d" || s === "3d") return s; } catch { /* sem armazenamento */ }
+  return reduzirMovimento ? "2d" : "3d";
+}
+
 async function carregarMapa() {
   const resp = await fetch("/data/brasil-uf.json");
   if (!resp.ok) throw new Error("mapa indisponível");
   estado.geo = await resp.json();
+  await definirModoMapa(preferenciaModo(), false);
+}
+
+async function definirModoMapa(modo, salvar = true) {
   const palco = $("mapa-palco");
+  if (modo === "3d") {
+    try {
+      const mod = await import("./mapa3d.js");
+      if (!mod.webglDisponivel()) throw new Error("WebGL indisponível");
+      estado.mapa3d?.destruir();
+      palco.replaceChildren();
+      palco.dataset.modo = "3d";
+      estado.mapa3d = mod.criarMapa3D(palco, estado.geo, {
+        aoSelecionar: (uf) => selecionar(uf),
+        aoPassar: (uf, ev) => (uf ? mostrarTooltip(ev, uf) : esconderTooltip()),
+        reduzirMovimento,
+      });
+      estado.modoMapa = "3d";
+    } catch {
+      modo = "2d"; // sem WebGL ou sem acesso à biblioteca 3D: mapa 2D completo
+    }
+  }
+  if (modo === "2d") {
+    estado.mapa3d?.destruir();
+    estado.mapa3d = null;
+    palco.dataset.modo = "2d";
+    montarMapa2D(palco);
+    estado.modoMapa = "2d";
+  }
+  document.querySelectorAll(".alternar-mapa button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.modo === estado.modoMapa)));
+  $("dica-mapa").textContent = estado.modoMapa === "3d"
+    ? "Toque ou clique em um estado. No mapa 2D, os estados também podem ser escolhidos pelo teclado."
+    : "Toque, clique ou use Tab + Enter para escolher um estado.";
+  if (salvar) { try { localStorage.setItem("bav:mapa", estado.modoMapa); } catch { /* sem armazenamento */ } }
+  assinaturaMapa.clear();
+  render();
+}
+
+function montarMapa2D(palco) {
   const raiz = svg("svg", { viewBox: estado.geo.viewBox, role: "group", "aria-label": "Mapa do Brasil por unidade da federação" });
   const defs = svg("defs");
-  const hach = svg("pattern", { id: "hachura-empate", width: "6", height: "6", patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
-  hach.append(svg("rect", { width: "6", height: "6", fill: "#2a2a2e" }), svg("line", { x1: "0", y1: "0", x2: "0", y2: "6", stroke: "#e3121b", "stroke-width": "2" }));
-  defs.append(hach);
   for (const e of estado.geo.estados) defs.append(svg("path", { id: `geo-${e.uf}`, d: e.d }));
   raiz.append(defs);
-
-  // Profundidade: cópias deslocadas das mesmas geometrias, sem custo de geometria extra.
   const prof = svg("g", { class: "profundidade", "aria-hidden": "true" });
   [[10, ""], [6, "camada-2"], [3, "camada-1"]].forEach(([dy, classe]) => {
     const g = svg("g", { transform: `translate(0 ${dy})`, class: classe });
@@ -302,7 +435,6 @@ async function carregarMapa() {
     prof.append(g);
   });
   raiz.append(prof);
-
   const camada = svg("g", { class: "estados" });
   const rotulos = svg("g", { "aria-hidden": "true" });
   for (const e of estado.geo.estados) {
@@ -325,22 +457,34 @@ async function carregarMapa() {
 
 const assinaturaMapa = new Map();
 function renderMapa(referencia) {
-  if (!estado.geo) return;
-  for (const g of document.querySelectorAll(".uf")) {
-    const uf = g.dataset.uf;
-    const item = estado.snapshot?.escopos?.[uf];
-    const dados = item?.dados;
+  if (!estado.geo || !estado.modoMapa) return;
+  const css = getComputedStyle(document.documentElement);
+  const cores = new Map();
+  const pulsar = new Set();
+  for (const e of estado.geo.estados) {
+    const uf = e.uf;
+    const dados = estado.snapshot?.escopos?.[uf]?.dados;
     const cor = corEstado(dados, referencia);
-    const classe = `uf c-${cor.classe}`;
     const assinatura = `${cor.classe}|${dados?.dataRef}|${dados?.secoes?.totalizadas}`;
     const antes = assinaturaMapa.get(uf);
-    g.setAttribute("class", classe);
-    if (antes && antes !== assinatura) { g.classList.add("pulso"); setTimeout(() => g.classList.remove("pulso"), 1300); }
+    if (antes && antes !== assinatura) pulsar.add(uf);
     assinaturaMapa.set(uf, assinatura);
-    g.setAttribute("aria-pressed", String(estado.uf === uf));
-    g.setAttribute("aria-label", descreverUf(uf, dados, cor));
-    const rot = document.querySelector(`[data-rotulo="${uf}"]`);
-    if (rot) rot.classList.toggle("escuro", /^b-3$/.test(cor.classe));
+    cores.set(uf, css.getPropertyValue(cor.classe === "empate" ? "--empate" : `--${cor.classe}`).trim() || "#161618");
+    const g = document.querySelector(`.uf[data-uf="${uf}"]`);
+    if (g) {
+      g.setAttribute("class", `uf c-${cor.classe}`);
+      if (pulsar.has(uf)) { g.classList.add("pulso"); setTimeout(() => g.classList.remove("pulso"), 1300); }
+      g.setAttribute("aria-pressed", String(estado.uf === uf));
+      g.setAttribute("aria-label", descreverUf(uf, dados, cor));
+      document.querySelector(`[data-rotulo="${uf}"]`)?.classList.toggle("escuro", cor.classe === "b-3");
+    }
+  }
+  document.querySelector(".estados")?.classList.toggle("com-selecao", estado.uf !== "br");
+  if (estado.mapa3d) {
+    const dadosSel = estado.snapshot?.escopos?.[estado.uf]?.dados;
+    const lider = dadosSel && dadosSel.status !== "aguardando" ? dadosSel.candidatos[0] : null;
+    const rot = estado.uf === "br" ? "" : `${NOMES[estado.uf]}${lider ? ` · ${lider.nome.split(" ")[0]} ${formatarPct(lider.pct)}` : ""}`;
+    estado.mapa3d.atualizar(cores, estado.uf, rot, pulsar);
   }
 }
 
@@ -354,7 +498,7 @@ function descreverUf(uf, dados, cor) {
 }
 
 function mostrarTooltip(ev, uf) {
-  if (ev.pointerType === "touch") return;
+  if (!ev || ev.pointerType === "touch") return;
   const t = $("tooltip");
   const dados = estado.snapshot?.escopos?.[uf]?.dados;
   t.replaceChildren(el("strong", { text: NOMES[uf] }));
@@ -376,13 +520,13 @@ function renderLegenda(referencia) {
   const grupos = [];
   const escala = (prefixo) => el("span", { class: "legenda-escala" },
     ...[1, 2, 3].map((f) => el("span", { class: "amostra", style: `background: var(--${prefixo}-${f})` })));
-  if (referencia.length) {
+  if (referencia.length && br?.status !== "aguardando") {
     referencia.forEach((num, i) => grupos.push(el("span", { class: "legenda-grupo" }, escala(i === 0 ? "a" : "b"), document.createTextNode(`${nomeDe(num)} lidera`))));
     if (br?.candidatos.length > 2) grupos.push(el("span", { class: "legenda-grupo" }, escala("outro"), document.createTextNode("Outro candidato lidera")));
+    grupos.push(el("span", { class: "legenda-grupo" }, el("span", { class: "amostra", style: "background: var(--empate)" }), document.createTextNode("Diferença menor que 1 p.p.")));
   }
-  grupos.push(el("span", { class: "legenda-grupo" }, el("span", { class: "amostra", style: "background: repeating-linear-gradient(45deg,#2a2a2e 0 3px,#e3121b 3px 5px)" }), document.createTextNode("Diferença menor que 1 p.p.")));
   grupos.push(el("span", { class: "legenda-grupo" }, el("span", { class: "amostra", style: "background: var(--sem-dados); border-color:#2b2b30" }), document.createTextNode("Aguardando dados")));
-  grupos.push(el("p", { class: "legenda-nota", text: "Intensidade da cor: diferença entre 1º e 2º colocados no estado — clara: 1 a 10 p.p.; média: 10 a 20 p.p.; forte: 20 p.p. ou mais. Os mesmos dados estão em texto na tabela abaixo." }));
+  grupos.push(el("p", { class: "legenda-nota", text: "Intensidade da cor: diferença entre 1º e 2º colocados no estado. Clara: 1 a 10 p.p.; média: 10 a 20 p.p.; forte: 20 p.p. ou mais. Os mesmos dados estão em texto na tabela abaixo." }));
   $("legenda").replaceChildren(...grupos);
 }
 
@@ -399,12 +543,11 @@ function renderTabela(referencia) {
       return el("td", {}, el("span", { class: "marcador", style: `background: var(--${slot}-3)`, "aria-hidden": "true" }),
         document.createTextNode(`${c.nome} `), el("span", { class: "num", text: formatarPct(c.pct) }));
     };
-    const tr = el("tr", { "aria-current": estado.uf === uf ? "true" : null },
+    return el("tr", { "aria-current": estado.uf === uf ? "true" : null },
       el("td", {}, el("button", { type: "button", class: "link-uf", "data-uf": uf, text: NOMES[uf] })),
       cel(p), cel(s),
       el("td", { class: "num", text: p && s && p.pctNum != null && s.pctNum != null ? `${(p.pctNum - s.pctNum).toFixed(2).replace(".", ",")} p.p.` : "—" }),
       el("td", { class: "num", text: dados ? formatarPct(dados.secoes.pct) : "—" }));
-    return tr;
   });
   corpo.replaceChildren(...linhas);
 }
@@ -423,16 +566,33 @@ function trocarTurno(turno) {
   if (turno === estado.turno) return;
   estado.turno = turno;
   estado.snapshot = null;
+  estado.ultimaConsultaOk = null;
   estado.falhas = 0;
   assinaturaMapa.clear();
   $("candidatos").replaceChildren();
-  document.querySelectorAll(".turno").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.turno === turno)));
+  marcarTurno();
   const url = new URL(location.href);
   if (turno === "2") url.searchParams.delete("turno"); else url.searchParams.set("turno", turno);
   history.replaceState(null, "", url);
   setVivo("carregando", "Atualizando");
+  renderResumo1T();
   render();
   atualizar();
+}
+
+function marcarTurno() {
+  document.querySelector(".turnos").dataset.ativo = estado.turno === "1" ? "1" : "2";
+  document.querySelectorAll(".turno").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.turno === estado.turno)));
+}
+
+function configurarCredito() {
+  const box = $("credito");
+  const handle = (box.dataset.instagram || "").replace(/^@/, "").trim();
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) return;
+  const a = $("credito-instagram");
+  a.href = `https://www.instagram.com/${handle}/`;
+  $("credito-instagram-texto").textContent = `@${handle}`;
+  a.hidden = false;
 }
 
 function iniciar() {
@@ -443,21 +603,24 @@ function iniciar() {
   $("voltar-brasil").addEventListener("click", () => selecionar("br"));
   $("tabela-corpo").addEventListener("click", (ev) => {
     const b = ev.target.closest(".link-uf");
-    if (b) { selecionar(b.dataset.uf); $("painel-candidatos").focus({ preventScroll: false }); }
+    if (b) { selecionar(b.dataset.uf); $("painel-candidatos").focus(); }
   });
-  document.querySelectorAll(".turno").forEach((b) => {
-    b.setAttribute("aria-pressed", String(b.dataset.turno === estado.turno));
-    b.addEventListener("click", () => trocarTurno(b.dataset.turno));
-  });
+  marcarTurno();
+  document.querySelectorAll(".turno").forEach((b) => b.addEventListener("click", () => trocarTurno(b.dataset.turno)));
+  document.querySelectorAll(".alternar-mapa button").forEach((b) => b.addEventListener("click", () => {
+    if (estado.geo && b.dataset.modo !== estado.modoMapa) definirModoMapa(b.dataset.modo);
+  }));
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) clearTimeout(estado.timer);
     else atualizar();
   });
-  carregarMapa().then(render).catch(() => { $("mapa-palco").textContent = "Não foi possível carregar o mapa. Os resultados por estado estão na tabela abaixo."; });
+  configurarCredito();
+  renderResumo1T();
+  carregarMapa().catch(() => { $("mapa-palco").textContent = "Não foi possível carregar o mapa. Os resultados por estado estão na tabela abaixo."; });
   render();
   atualizar();
 }
 
-// Exposto apenas para os testes automatizados conferirem a ordem das respostas.
+// Exposto apenas para os testes automatizados conferirem o estado da página.
 window.__bav = { estado, maisNovo };
 iniciar();

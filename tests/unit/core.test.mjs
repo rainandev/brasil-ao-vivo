@@ -3,10 +3,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ErroArquivo, candidatosReferencia, corEstado, formatarPct, formatarVotos, instanteTse, lerArquivo,
+  ErroArquivo, candidatosReferencia, dadosDoRegistro, fotoCandidato, corEstado, formatarPct, formatarVotos, instanteTse, lerArquivo,
   maisNovo, mesclar, urlArquivo, urlFoto,
 } from "../../public/js/core.js";
 import { arquivoTeste } from "../support/fixtures.mjs";
+import { REGISTRO_1T } from "../../public/data/primeiro-turno-registro.js";
+import { ABRANGENCIAS } from "../../public/js/core.js";
 
 const cfg = { base: "https://resultados.tse.jus.br", ambiente: "oficial", ciclo: "ele2026", eleicao: "6258", cargo: 1 };
 
@@ -120,4 +122,23 @@ test("formatação nunca transforma ausência de dado em zero", () => {
   assert.equal(formatarVotos(null), "—");
   assert.equal(formatarPct(null), "—");
   assert.equal(formatarVotos(53879538), "53.879.538");
+});
+
+test("registro do 1º turno: soma das UFs + Exterior bate com o total do Brasil", () => {
+  const soma = {};
+  for (const uf of ABRANGENCIAS.filter((u) => u !== "br")) {
+    for (const c of REGISTRO_1T.recortes[uf].candidatos) soma[c.n] = (soma[c.n] || 0) + Number(c.vap);
+  }
+  for (const c of REGISTRO_1T.recortes.br.candidatos) assert.equal(soma[c.n], Number(c.vap), c.nome);
+  // Valores conferidos com a página oficial do TSE (resultados.tse.jus.br)
+  const br = dadosDoRegistro(REGISTRO_1T, "br");
+  assert.equal(formatarVotos(br.candidatos[0].votos), "56.104.503");
+  assert.equal(formatarVotos(br.candidatos[1].votos), "53.879.538");
+});
+
+test("foto local só quando número e nome conferem; demais usam a foto do TSE", () => {
+  assert.equal(fotoCandidato({ numero: "13", nome: "LULA", sq: "1" }, cfg), "/img/candidatos/lula.webp");
+  assert.equal(fotoCandidato({ numero: "22", nome: "FLÁVIO BOLSONARO", sq: "1" }, cfg), "/img/candidatos/flavio-bolsonaro.webp");
+  assert.match(fotoCandidato({ numero: "22", nome: "OUTRO NOME", sq: "280001" }, cfg), /fotos\/br\/280001\.jpeg$/);
+  assert.match(fotoCandidato({ numero: "14", nome: "LULA", sq: "280002" }, cfg), /fotos\/br\/280002\.jpeg$/);
 });

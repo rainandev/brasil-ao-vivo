@@ -36,6 +36,19 @@ export function urlFoto({ base, ambiente, ciclo, eleicao }, sq) {
   return `${base}/${ambiente}/${ciclo}/${eleicao}/fotos/br/${sq}.jpeg`;
 }
 
+// Fotos hospedadas no próprio site. Só valem quando número E nome conferem com o
+// arquivo oficial; qualquer outro candidato usa a foto publicada pelo TSE.
+const FOTOS_LOCAIS = [
+  { numero: "13", nome: /\bLULA\b/, src: "/img/candidatos/lula.webp" },
+  { numero: "22", nome: /\bFL[AÁ]VIO\b/, src: "/img/candidatos/flavio-bolsonaro.webp" },
+];
+const semAcento = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+
+export function fotoCandidato(cand, cfg) {
+  const local = FOTOS_LOCAIS.find((f) => f.numero === cand.numero && f.nome.test(semAcento(cand.nome)));
+  return local ? local.src : cfg ? urlFoto(cfg, cand.sq) : null;
+}
+
 // Inteiro oficial: só aceita dígitos. "1.234" ou "12,5" não são contagens válidas.
 export function inteiro(v) {
   if (v == null) return null;
@@ -155,7 +168,40 @@ export function lerArquivo(json, { uf, eleicao } = {}) {
     },
     candidatos,
     avisos,
+    origem: "tse",
   };
+}
+
+// Recorte montado a partir do registro estático do 1º turno (encerrado). Só traz
+// o que o registro contém: candidatos, votos e percentuais oficiais.
+export function dadosDoRegistro(registro, uf) {
+  const r = registro?.recortes?.[uf];
+  if (!r) return null;
+  const candidatos = r.candidatos.map((c) => ({
+    numero: c.n, sq: "", nome: c.nome, partido: c.partido || "", votos: inteiro(c.vap),
+    pct: c.pvap, pctNum: percentual(c.pvap), situacao: "",
+  }));
+  candidatos.forEach((c) => { c.foto = fotoCandidato(c, null); });
+  candidatos.sort((a, b) => b.votos - a.votos);
+  return {
+    uf, eleicao: registro.eleicao, turno: "1", dg: r.dg, hg: r.hg, dataRef: instanteTse(r.dg, r.hg),
+    andamento: "f", status: "final",
+    secoes: { totalizadas: null, total: null, pct: r.pst, pctNum: percentual(r.pst) },
+    votos: { validos: null, brancos: null, pctBrancos: null, nulos: null, pctNulos: null, abstencao: null, pctAbstencao: null },
+    candidatos, avisos: [], origem: "registro",
+  };
+}
+
+// Preenche com o registro os recortes que a leitura ao vivo não trouxe.
+export function completarComRegistro(snapshot, registro) {
+  if (!registro || String(snapshot.eleicao) !== String(registro.eleicao)) return snapshot;
+  const escopos = { ...snapshot.escopos };
+  for (const uf of ABRANGENCIAS) {
+    if (escopos[uf]?.dados) continue;
+    const dados = dadosDoRegistro(registro, uf);
+    if (dados) escopos[uf] = { dados, erro: null };
+  }
+  return { ...snapshot, escopos };
 }
 
 // Uma leitura é mais nova que outra se o horário do TSE avançou ou, no mesmo

@@ -4,39 +4,47 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>BRASIL // AO VIVO — Apuração presidencial 2026</title>
-  <meta name="description" content="Resultados da eleição presidencial de 2026 por estado, atualizados automaticamente a partir dos arquivos oficiais do TSE.">
+  <meta name="description" content="Resultados da eleição presidencial de 2026 por estado, com mapa 3D, atualizados automaticamente a partir dos arquivos oficiais do TSE.">
   <meta name="theme-color" content="#050505">
+  <meta property="og:title" content="BRASIL // AO VIVO — Apuração presidencial 2026">
+  <meta property="og:description" content="Resultados oficiais do TSE por estado, em tempo real.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..100,400..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="modulepreload" href="/js/core.js">
+  <link rel="preload" as="image" href="/img/candidatos/lula.webp" type="image/webp">
+  <link rel="preload" as="image" href="/img/candidatos/flavio-bolsonaro.webp" type="image/webp">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/vendor/three/three.module.min.js",
+        "three/addons/": "/vendor/three/addons/"
+      }
+    }
+  </script>
 </head>
 <body>
   <a class="pular" href="#painel-candidatos">Pular para os resultados</a>
 
   <div class="barra-progresso" aria-hidden="true"><span id="barra-progresso"></span></div>
 
-  <header class="topo">
+  <header class="topo revelar" style="--i:0">
     <a class="marca" href="/" aria-label="BRASIL // AO VIVO — início">
-      BRASIL <span class="marca-barra">//</span> AO VIVO
+      <span class="marca-a">BRASIL</span> <span class="marca-barra">//</span> <span class="marca-b">AO VIVO</span>
     </a>
     <nav class="turnos" aria-label="Turno">
+      <span class="turno-indicador" aria-hidden="true"></span>
       <button type="button" class="turno" data-turno="2" aria-pressed="true">2º turno</button>
       <button type="button" class="turno" data-turno="1" aria-pressed="false">1º turno</button>
     </nav>
-    <div class="ao-vivo" id="indicador-vivo" data-estado="carregando">
+    <div class="ao-vivo" id="indicador-vivo" data-estado="carregando" role="status">
       <span class="ponto" aria-hidden="true"></span>
       <span id="indicador-texto">Conectando</span>
     </div>
   </header>
 
-  <div id="aviso-teste" class="aviso-teste" hidden role="alert">
-    <span>DADOS DE TESTE — fonte simulada local. Estes números NÃO são resultados eleitorais reais.</span>
-  </div>
-
-  <section class="faixa-status" aria-label="Situação da apuração">
+  <section class="faixa-status revelar" style="--i:1" aria-label="Situação da apuração">
     <div class="status-principal">
       <span class="selo" id="selo-status" data-status="aguardando">Aguardando</span>
       <strong id="status-secoes">—</strong>
@@ -48,30 +56,44 @@
     <p class="mensagem" id="mensagem" role="status" aria-live="polite"></p>
   </section>
 
+  <section class="resumo-1t revelar" id="resumo-1t" style="--i:2" aria-labelledby="titulo-1t">
+    <div class="resumo-cabecalho">
+      <h2 id="titulo-1t" class="rotulo">1º turno · resultado final</h2>
+      <p class="resumo-fonte" id="resumo-fonte"></p>
+    </div>
+    <div class="resumo-duelo" id="resumo-duelo"></div>
+  </section>
+
   <main class="painel">
-    <aside class="coluna-indicadores" aria-labelledby="titulo-indicadores">
+    <aside class="coluna-indicadores revelar" style="--i:5" aria-labelledby="titulo-indicadores">
       <h2 id="titulo-indicadores" class="rotulo">Indicadores <span id="indicadores-escopo">— Brasil</span></h2>
       <dl class="indicadores" id="indicadores"></dl>
-      <p class="nota">Percentuais de brancos, nulos e abstenção conforme publicados pelo TSE.</p>
+      <p class="nota" id="nota-indicadores">Percentuais de brancos, nulos e abstenção conforme publicados pelo TSE.</p>
     </aside>
 
-    <section class="coluna-mapa" aria-labelledby="titulo-mapa">
+    <section class="coluna-mapa revelar" style="--i:4" aria-labelledby="titulo-mapa">
       <div class="mapa-cabecalho">
         <h2 id="titulo-mapa" class="rotulo">Por estado</h2>
-        <label class="seletor">
-          <span class="sr">Escolha um estado</span>
-          <select id="seletor-uf"><option value="br">Brasil (todos os estados)</option></select>
-        </label>
+        <div class="mapa-controles">
+          <div class="alternar-mapa" role="group" aria-label="Tipo de mapa">
+            <button type="button" data-modo="3d" aria-pressed="true">3D</button>
+            <button type="button" data-modo="2d" aria-pressed="false">2D</button>
+          </div>
+          <label class="seletor">
+            <span class="sr">Escolha um estado</span>
+            <select id="seletor-uf"><option value="br">Brasil (todos os estados)</option></select>
+          </label>
+        </div>
       </div>
-      <p class="dica">Toque ou clique em um estado para ver os detalhes.</p>
+      <p class="dica" id="dica-mapa">Toque ou clique em um estado para ver os detalhes.</p>
       <div class="mapa-palco" id="mapa-palco">
-        <div class="mapa-carregando" id="mapa-carregando">Carregando mapa…</div>
+        <div class="mapa-carregando" id="mapa-carregando"><span class="girando" aria-hidden="true"></span>Carregando mapa…</div>
       </div>
       <div class="tooltip" id="tooltip" hidden></div>
       <div class="legenda" id="legenda" aria-label="Legenda do mapa"></div>
     </section>
 
-    <section class="coluna-candidatos" id="painel-candidatos" aria-labelledby="titulo-candidatos" tabindex="-1">
+    <section class="coluna-candidatos revelar" style="--i:3" id="painel-candidatos" aria-labelledby="titulo-candidatos" tabindex="-1">
       <div class="cand-cabecalho">
         <h2 id="titulo-candidatos" class="titulo-cargo">PRESIDENTE</h2>
         <p class="subtitulo">Mais votados em % de votos válidos — <strong id="escopo-nome">Brasil</strong></p>
@@ -82,8 +104,8 @@
     </section>
   </main>
 
-  <section class="tabela-estados" aria-labelledby="titulo-tabela">
-    <h2 id="titulo-tabela" class="rotulo">Resultados por estado (texto)</h2>
+  <section class="tabela-estados revelar" style="--i:6" aria-labelledby="titulo-tabela">
+    <h2 id="titulo-tabela" class="rotulo">Resultados por estado</h2>
     <div class="tabela-rolagem">
       <table>
         <caption class="sr">Líder, percentuais de votos válidos e seções totalizadas em cada unidade da federação</caption>
@@ -96,10 +118,24 @@
   </section>
 
   <footer class="rodape">
-    <p><strong>BRASIL // AO VIVO</strong> é um projeto independente, sem vínculo com o TSE, partidos ou candidatos.</p>
-    <p>Fonte dos dados: <a href="https://resultados.tse.jus.br/oficial/app/index.html" rel="noopener" target="_blank">Tribunal Superior Eleitoral — divulgação oficial de resultados</a>.
-      Os percentuais de candidatos são os publicados pelo TSE sobre votos válidos. Resultados parciais podem mudar até o fim da apuração.
-      Atualização automática a cada 30 segundos, sujeita ao intervalo de publicação do TSE.</p>
+    <div class="credito" id="credito" data-instagram="">
+      <img class="credito-foto" src="/img/rainan.webp" alt="Foto de Rainan" width="72" height="72" loading="lazy">
+      <div class="credito-texto">
+        <span class="credito-rotulo">Design e desenvolvimento</span>
+        <strong class="credito-nome">Rainan</strong>
+        <span class="credito-cargo">Web designer · Front-end</span>
+      </div>
+      <a class="credito-instagram" id="credito-instagram" hidden rel="noopener" target="_blank">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>
+        <span id="credito-instagram-texto">Instagram</span>
+      </a>
+    </div>
+    <div class="rodape-legal">
+      <p><strong>BRASIL // AO VIVO</strong> é um projeto independente, sem vínculo com o TSE, partidos ou candidatos.</p>
+      <p>Fonte dos dados: <a href="https://resultados.tse.jus.br/oficial/app/index.html" rel="noopener" target="_blank">Tribunal Superior Eleitoral — divulgação oficial de resultados</a>.
+        Percentuais de candidatos conforme publicados pelo TSE, sobre votos válidos. Resultados parciais podem mudar até o fim da apuração.
+        Atualização automática a cada 30 segundos, sujeita ao ritmo de publicação do TSE.</p>
+    </div>
   </footer>
 
   <script type="module" src="/js/app.js"></script>

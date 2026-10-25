@@ -4,18 +4,19 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import handler from "../api/resultados.js";
+import { responderResultados } from "../lib/fonte-tse.js";
 
 const PUBLIC = fileURLToPath(new URL("../public/", import.meta.url));
 const TIPOS = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".webp": "image/webp",
 };
 
-export function criarServidor() {
+// fetchImpl só é trocado pelos testes automatizados; npm run dev usa o TSE real.
+export function criarServidor({ fetchImpl = fetch } = {}) {
   return createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
-    if (url.pathname === "/api/resultados") return handler(req, res);
+    if (url.pathname === "/api/resultados") return responderResultados(req, res, { fetchImpl });
     let caminho = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "");
     if (caminho.endsWith("/")) caminho += "index.html";
     try {

@@ -1,6 +1,6 @@
 # BRASIL // AO VIVO
 
-Apuração da eleição presidencial de 2026 dentro do próprio site: percentuais e votos de cada candidato, seções totalizadas, brancos, nulos, abstenção, mapa interativo das 27 UFs e consulta por estado. A página se atualiza sozinha. O TSE é usado só como fonte de dados, nos bastidores.
+Apuração da eleição presidencial de 2026 dentro do próprio site: percentuais e votos de cada candidato, seções totalizadas, brancos, nulos, abstenção, **mapa 3D interativo** das 27 UFs (com versão 2D acessível) e consulta por estado. A página se atualiza sozinha. O TSE é usado só como fonte de dados, nos bastidores. **O site não simula dados:** tudo o que aparece vem dos arquivos oficiais do TSE.
 
 ## Fonte oficial
 
@@ -32,6 +32,16 @@ Cada ciclo de consulta lê 29 arquivos: `br`, as 27 UFs e `zz` (Exterior). As fo
 | Horário dos dados | `dg` + `hg` (horário de Brasília) |
 | Parcial ou final | `and` (`f` = encerrada) e `s.st` (0 = não iniciada) |
 
+### Resultado do 1º turno
+
+O 1º turno está encerrado. O site tenta ler o arquivo oficial ao vivo (eleição 6257). Se o TSE não responder, usa `public/data/primeiro-turno-registro.js`, o **registro da totalização final** de 05/10/2026 (100% das seções). Esse registro tem os dois candidatos que foram ao 2º turno, em cada UF. Os valores foram transcritos dos arquivos oficiais e conferidos de duas formas: a soma das 27 UFs e do Exterior bate exatamente com o total do Brasil (FLAVIO BOLSONARO 56.104.503, LULA 53.879.538), e esse total confere com a página oficial do TSE. Um teste automatizado refaz essa soma. A leitura ao vivo sempre tem prioridade sobre o registro. O 2º turno nunca usa o registro.
+
+No 2º turno, um quadro "1º turno · resultado final" fica no topo com os dois candidatos, as fotos, os percentuais e os votos.
+
+### Fotos
+
+As fotos de Lula e Flávio Bolsonaro ficam no próprio site (`public/img/candidatos/*.webp`, 320 px). São usadas só quando o número **e** o nome do candidato no arquivo oficial conferem (13/LULA e 22/FLÁVIO). Qualquer outro candidato usa a foto publicada pelo TSE. Se a imagem falhar, aparecem as iniciais.
+
 As contas feitas pelo site servem só para **conferência**: a soma dos `vap` contra `v.vv` e o `vap/vv` contra o `pvap`. Se algo não bater, o painel mostra um aviso e continua exibindo o número oficial.
 
 ## Como funciona a atualização
@@ -51,13 +61,33 @@ navegador ──(a cada 30 s)──▶ /api/resultados ──(no máx. 1 vez a c
 
 **Por que 30 s:** o TSE publica novas versões dos arquivos em intervalos da ordem de um minuto durante a apuração. Consultar mais rápido que isso não traz dados mais novos e gasta a cota gratuita da Vercel. A tela mostra separadamente o **horário dos dados do TSE** e o **horário da última consulta bem-sucedida**.
 
-## Mapa
+## Mapa 3D
 
-O mapa usa a geometria real das 27 UFs (malha IBGE via `click_that_hood`), projetada e simplificada por `scripts/build-map.mjs` em `public/data/brasil-uf.json` (72 KB). É desenhado em SVG com camadas de profundidade e uma leve inclinação 3D.
+O mapa usa a geometria real das 27 UFs (malha IBGE via `click_that_hood`), projetada e simplificada por `scripts/build-map.mjs` em `public/data/brasil-uf.json` (72 KB).
+
+- **3D (padrão):** em `public/js/mapa3d.js`, cada estado é extrudado com Three.js 0.160 (hospedado em `public/vendor/three/`, sem depender de CDN). Na entrada, os estados sobem em onda a partir do centro do país. O estado selecionado se eleva e os demais escurecem. Um rótulo flutuante mostra quem lidera ali, e o mouse no desktop gera uma leve paralaxe. Quando um estado recebe dado novo, ele pulsa. O desenho só acontece enquanto há animação e pausa fora da tela ou com a aba oculta, o que economiza bateria. A câmera se ajusta sozinha a qualquer proporção de tela. A animação usa o relógio real, então termina no tempo certo mesmo em celulares lentos.
+- **2D:** em SVG com profundidade, focável pelo teclado. É usado automaticamente sem WebGL ou com "reduzir movimento" ativado, e pode ser escolhido no botão 3D/2D (a escolha fica salva).
 
 - **Cores:** vermelho para um dos dois mais votados no Brasil e platina para o outro. A atribuição segue a ordem do número de urna, então a cor não troca durante a apuração. A intensidade indica a diferença entre o 1º e o 2º colocados no estado (1–10, 10–20 e 20+ p.p.). Diferença menor que 1 p.p. aparece hachurada. Estados sem dados ficam em preto.
 - **Acessibilidade:** cada estado pode ser focado com o teclado (Tab, depois Enter ou Espaço) e tem uma descrição em texto (`aria-label`). Há também um seletor de estado e uma tabela com todos os estados em texto.
-- **Celular:** os candidatos aparecem primeiro e o mapa permite tocar no estado.
+- **Celular:** os candidatos aparecem primeiro e o mapa permite tocar no estado. Os alvos de toque têm pelo menos 40–44 px, as margens respeitam a área segura (notch) e não há rolagem lateral. Testado de 320 px (iPhone SE) a 430 px e com o celular deitado.
+
+## Animações
+
+- Entrada escalonada das seções.
+- Seletor de turno deslizante.
+- Contadores de votos e percentuais que **terminam sempre no texto oficial**.
+- Anel de progresso ao redor da foto do candidato.
+- Barras com brilho.
+- Destaque do candidato que lidera.
+- Pulso nos números atualizados.
+- Barra de progresso das seções no topo.
+
+Tudo respeita `prefers-reduced-motion`.
+
+## Crédito no rodapé
+
+O rodapé mostra a foto e o nome de Rainan (Web designer · Front-end). Para exibir o botão do Instagram, preencha o `@` em `public/index.html`, no atributo `data-instagram=""` do elemento `#credito`. Exemplo: `data-instagram="seu.usuario"`.
 
 ## Rodar localmente
 
@@ -69,8 +99,8 @@ npm run dev          # http://localhost:3000, usando o TSE real
 ## Testes
 
 ```bash
-npm test             # 28 testes unitários (node:test, sem dependências)
-npm run test:e2e     # 10 testes no navegador (Playwright + Chromium)
+npm test             # 34 testes unitários (node:test, sem dependências)
+npm run test:e2e     # 17 testes no navegador (Playwright + Chromium, mapa 3D via WebGL por software)
 ```
 
 Para os testes de navegador: `npm i -D playwright && npx playwright install chromium`.
@@ -83,11 +113,12 @@ Para os testes de navegador: `npm i -D playwright && npx playwright install chro
 | 4. Resultados por estado (mapa, seletor, teclado) | `ui.test.mjs` |
 | 5. Nenhum número sem dado oficial | `ui.test.mjs`, `fonte.test.mjs` |
 | 6. Erros, indisponibilidade, dados incompletos, respostas antigas | `fonte.test.mjs`, `ui.test.mjs` |
-| 7. Celular (390 px, toque, sem rolagem horizontal) | `ui.test.mjs` |
+| 7. Celular (320, 360, 390 e 430 px; toque no 2D e no 3D; alvos de toque; sem rolagem horizontal) | `ui.test.mjs` |
+| Registro real do 1º turno (soma das UFs = Brasil; números exibidos) | `core.test.mjs`, `fonte.test.mjs`, `ui.test.mjs` |
 | 8. Cache e frequência de consultas | `fonte.test.mjs`, `tests/unit/api-vercel.test.mjs` |
 | 9. Compatibilidade com a Vercel | `api-vercel.test.mjs` |
 
-Os **dados artificiais** de teste (candidatos "CANDIDATA TESTE ALFA" e "CANDIDATO TESTE BETA") existem só em `tests/support/`. Um teste garante que nada disso aparece em `public/`. O servidor só aceita uma fonte simulada com `PERMITIR_FONTE_TESTE=1` e `TSE_BASE_URL`, e **nunca na Vercel** (a variável `VERCEL` bloqueia). Com fonte simulada, a página mostra uma faixa "DADOS DE TESTE".
+**O site publicado não tem modo de dados simulados.** A base da fonte é fixa em `https://resultados.tse.jus.br` e nenhuma variável de ambiente a muda. Para verificar automaticamente situações que ainda não aconteceram (apuração andando, TSE fora do ar, arquivo quebrado), os testes injetam um `fetch` falso direto na função, apenas dentro de `tests/`. Esses arquivos de teste usam nomes fictícios ("CANDIDATA TESTE ALFA") e nunca são publicados. Um teste garante que nenhum arquivo de `public/`, `api/` ou `lib/` contém dados ou chaves de teste.
 
 ## Variáveis de ambiente
 
