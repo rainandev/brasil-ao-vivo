@@ -58,7 +58,8 @@ test("2º turno antes da publicação: aguardando, sem números, e resumo real d
   assert.ok(fotos.every((f) => f[1]), "fotos carregadas");
   await p.locator("#indicador-texto", { hasText: "aguardando TSE" }).waitFor();
   assert.equal(await p.locator("#hora-consulta").innerText(), "—", "nenhum arquivo lido: não há consulta bem-sucedida");
-  assert.equal(await p.locator("#credito-instagram").isHidden(), true);
+  assert.equal(await p.locator("#credito").getAttribute("href"), "https://www.instagram.com/rainan.zx/");
+  assert.match(await p.locator("#credito").innerText(), /@rainan\.zx/);
   assert.ok(await p.locator(".credito-foto").evaluate((i) => i.complete && i.naturalWidth > 0), "foto do crédito no rodapé");
   await p.close();
 });

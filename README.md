@@ -87,7 +87,7 @@ Tudo respeita `prefers-reduced-motion`.
 
 ## Crédito no rodapé
 
-O rodapé mostra a foto e o nome de Rainan (Web designer · Front-end). Para exibir o botão do Instagram, preencha o `@` em `public/index.html`, no atributo `data-instagram=""` do elemento `#credito`. Exemplo: `data-instagram="seu.usuario"`.
+O rodapé tem um cartão de perfil com a foto de Rainan, o @rainan.zx e "Web designer · Front-end". O cartão inteiro leva ao perfil https://www.instagram.com/rainan.zx/. Para mudar, edite o elemento `#credito` em `public/index.html`.
 
 ## Rodar localmente
 

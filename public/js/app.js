@@ -585,16 +585,6 @@ function marcarTurno() {
   document.querySelectorAll(".turno").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.turno === estado.turno)));
 }
 
-function configurarCredito() {
-  const box = $("credito");
-  const handle = (box.dataset.instagram || "").replace(/^@/, "").trim();
-  if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) return;
-  const a = $("credito-instagram");
-  a.href = `https://www.instagram.com/${handle}/`;
-  $("credito-instagram-texto").textContent = `@${handle}`;
-  a.hidden = false;
-}
-
 function iniciar() {
   const sel = $("seletor-uf");
   for (const uf of ABRANGENCIAS.filter((u) => u !== "br")) sel.append(el("option", { value: uf, text: NOMES[uf] }));
@@ -614,7 +604,6 @@ function iniciar() {
     if (document.hidden) clearTimeout(estado.timer);
     else atualizar();
   });
-  configurarCredito();
   renderResumo1T();
   carregarMapa().catch(() => { $("mapa-palco").textContent = "Não foi possível carregar o mapa. Os resultados por estado estão na tabela abaixo."; });
   render();
