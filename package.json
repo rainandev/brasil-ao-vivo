@@ -1,0 +1,23 @@
+{
+  "name": "brasil-ao-vivo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BRASIL // AO VIVO — apuração presidencial 2026 com dados oficiais do TSE",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "build:map": "node scripts/build-map.mjs",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
+    "test:all": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "d3-geo": "^3.1.1",
+    "topojson-client": "^3.1.0",
+    "topojson-server": "^3.0.1",
+    "topojson-simplify": "^3.0.3"
+  }
+}

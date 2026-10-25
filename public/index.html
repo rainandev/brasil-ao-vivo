@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>BRASIL // AO VIVO — Apuração presidencial 2026</title>
+  <meta name="description" content="Resultados da eleição presidencial de 2026 por estado, atualizados automaticamente a partir dos arquivos oficiais do TSE.">
+  <meta name="theme-color" content="#050505">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="modulepreload" href="/js/core.js">
+</head>
+<body>
+  <a class="pular" href="#painel-candidatos">Pular para os resultados</a>
+
+  <div class="barra-progresso" aria-hidden="true"><span id="barra-progresso"></span></div>
+
+  <header class="topo">
+    <a class="marca" href="/" aria-label="BRASIL // AO VIVO — início">
+      BRASIL <span class="marca-barra">//</span> AO VIVO
+    </a>
+    <nav class="turnos" aria-label="Turno">
+      <button type="button" class="turno" data-turno="2" aria-pressed="true">2º turno</button>
+      <button type="button" class="turno" data-turno="1" aria-pressed="false">1º turno</button>
+    </nav>
+    <div class="ao-vivo" id="indicador-vivo" data-estado="carregando">
+      <span class="ponto" aria-hidden="true"></span>
+      <span id="indicador-texto">Conectando</span>
+    </div>
+  </header>
+
+  <div id="aviso-teste" class="aviso-teste" hidden role="alert">
+    <span>DADOS DE TESTE — fonte simulada local. Estes números NÃO são resultados eleitorais reais.</span>
+  </div>
+
+  <section class="faixa-status" aria-label="Situação da apuração">
+    <div class="status-principal">
+      <span class="selo" id="selo-status" data-status="aguardando">Aguardando</span>
+      <strong id="status-secoes">—</strong>
+    </div>
+    <dl class="horarios">
+      <div><dt>Dados do TSE de</dt><dd id="hora-referencia">—</dd></div>
+      <div><dt>Última consulta bem-sucedida</dt><dd id="hora-consulta">—</dd></div>
+    </dl>
+    <p class="mensagem" id="mensagem" role="status" aria-live="polite"></p>
+  </section>
+
+  <main class="painel">
+    <aside class="coluna-indicadores" aria-labelledby="titulo-indicadores">
+      <h2 id="titulo-indicadores" class="rotulo">Indicadores <span id="indicadores-escopo">— Brasil</span></h2>
+      <dl class="indicadores" id="indicadores"></dl>
+      <p class="nota">Percentuais de brancos, nulos e abstenção conforme publicados pelo TSE.</p>
+    </aside>
+
+    <section class="coluna-mapa" aria-labelledby="titulo-mapa">
+      <div class="mapa-cabecalho">
+        <h2 id="titulo-mapa" class="rotulo">Por estado</h2>
+        <label class="seletor">
+          <span class="sr">Escolha um estado</span>
+          <select id="seletor-uf"><option value="br">Brasil (todos os estados)</option></select>
+        </label>
+      </div>
+      <p class="dica">Toque ou clique em um estado para ver os detalhes.</p>
+      <div class="mapa-palco" id="mapa-palco">
+        <div class="mapa-carregando" id="mapa-carregando">Carregando mapa…</div>
+      </div>
+      <div class="tooltip" id="tooltip" hidden></div>
+      <div class="legenda" id="legenda" aria-label="Legenda do mapa"></div>
+    </section>
+
+    <section class="coluna-candidatos" id="painel-candidatos" aria-labelledby="titulo-candidatos" tabindex="-1">
+      <div class="cand-cabecalho">
+        <h2 id="titulo-candidatos" class="titulo-cargo">PRESIDENTE</h2>
+        <p class="subtitulo">Mais votados em % de votos válidos — <strong id="escopo-nome">Brasil</strong></p>
+        <button type="button" id="voltar-brasil" class="botao-voltar" hidden>← Ver Brasil</button>
+      </div>
+      <ol class="candidatos" id="candidatos" aria-live="polite"></ol>
+      <p class="avisos-dados" id="avisos-dados" hidden></p>
+    </section>
+  </main>
+
+  <section class="tabela-estados" aria-labelledby="titulo-tabela">
+    <h2 id="titulo-tabela" class="rotulo">Resultados por estado (texto)</h2>
+    <div class="tabela-rolagem">
+      <table>
+        <caption class="sr">Líder, percentuais de votos válidos e seções totalizadas em cada unidade da federação</caption>
+        <thead>
+          <tr><th scope="col">Estado</th><th scope="col">1º colocado</th><th scope="col">2º colocado</th><th scope="col">Diferença</th><th scope="col">Seções</th></tr>
+        </thead>
+        <tbody id="tabela-corpo"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="rodape">
+    <p><strong>BRASIL // AO VIVO</strong> é um projeto independente, sem vínculo com o TSE, partidos ou candidatos.</p>
+    <p>Fonte dos dados: <a href="https://resultados.tse.jus.br/oficial/app/index.html" rel="noopener" target="_blank">Tribunal Superior Eleitoral — divulgação oficial de resultados</a>.
+      Os percentuais de candidatos são os publicados pelo TSE sobre votos válidos. Resultados parciais podem mudar até o fim da apuração.
+      Atualização automática a cada 30 segundos, sujeita ao intervalo de publicação do TSE.</p>
+  </footer>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
